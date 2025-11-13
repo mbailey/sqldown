@@ -10,7 +10,7 @@ USE AT OWN RISK
 
 ## Features
 
-✅ **Production Ready (v0.1.0):**
+✅ **USE AT OWN RISK (v0.1.0):**
 - Dynamic schema generation from YAML frontmatter and markdown structure
 - Column limit protection with intelligent section extraction
 - Import markdown collections into queryable SQLite databases
