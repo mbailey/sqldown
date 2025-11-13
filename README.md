@@ -1,6 +1,4 @@
-# [WIP] SQLDown *pre-alpha*
-
-USE AT OWN RISK
+# ☠️ SQLDown - pre-alpha - USE AT OWN RISK
 
 [![PyPI version](https://badge.fury.io/py/sqldown.svg)](https://pypi.org/project/sqldown/)
 [![Python versions](https://img.shields.io/pypi/pyversions/sqldown.svg)](https://pypi.org/project/sqldown/)
@@ -10,7 +8,7 @@ USE AT OWN RISK
 
 ## Features
 
-✅ **USE AT OWN RISK (v0.1.0):**
+☠️ **Pre-Alpha Software (v0.1.0) - USE AT YOUR OWN RISK:**
 - Dynamic schema generation from YAML frontmatter and markdown structure
 - Column limit protection with intelligent section extraction
 - Import markdown collections into queryable SQLite databases
