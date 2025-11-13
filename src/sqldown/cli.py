@@ -156,23 +156,62 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
         click.echo(f"   3. Split into multiple databases by document type", err=True)
         sys.exit(1)
 
-    # Import to database with dynamic schema
+    # Check if database/table exists before import
+    db_existed = db.exists()
     database = Database(str(db))
-    imported = 0
+    table_existed = table in database.table_names() if db_existed else False
+
+    # Get existing IDs to track updates vs inserts
+    existing_ids = set()
+    if table_existed:
+        existing_ids = {row['_id'] for row in database[table].rows_where(select='_id')}
+
+    # Import to database with dynamic schema
+    added = 0
+    updated = 0
+    errors = 0
+
     for doc in docs:
         try:
+            doc_id = doc.get('_id')
+            if doc_id in existing_ids:
+                updated += 1
+            else:
+                added += 1
             database[table].upsert(doc, pk='_id', alter=True)
-            imported += 1
         except Exception as e:
-            click.echo(f"⚠️  Error upserting {doc.get('_path', 'unknown')}: {e}", err=True)
+            errors += 1
+            if verbose:
+                click.echo(f"⚠️  Error upserting {doc.get('_path', 'unknown')}: {e}", err=True)
 
-    if verbose:
-        click.echo()
-    click.echo(f"✅ Imported {imported} of {len(docs)} documents into {db}:{table}")
+    # Build concise output message
+    action = "Created" if not db_existed else "Updated"
+    db_path = db.resolve()
 
-    # Show schema info
-    columns = database[table].columns
-    click.echo(f"📋 Schema has {len(columns)} columns")
+    # Make path relative if it's under current directory
+    try:
+        rel_path = db_path.relative_to(Path.cwd())
+        db_display = str(rel_path)
+    except ValueError:
+        # Not under current directory, show absolute
+        db_display = str(db_path)
+
+    # Build statistics part
+    stats_parts = []
+    if added > 0:
+        stats_parts.append(f"{added} added")
+    if updated > 0:
+        stats_parts.append(f"{updated} modified")
+
+    processed = added + updated
+    total_found = len(md_files)
+
+    # Single line output
+    stats = ", ".join(stats_parts) if stats_parts else "no changes"
+    click.echo(f"{action} {db_display}: {stats} ({processed}/{total_found} files processed)")
+
+    if errors > 0:
+        click.echo(f"⚠️  {errors} files failed to import", err=True)
 
 
 @main.command()
