@@ -1,65 +1,135 @@
-# SQLDown
+# [WIP] SQLDown - pre-alpha USE AT OWN RISK (always)
 
-**Bidirectional markdown ↔ SQLite conversion** - Load, query, and dump with ease.
+[![PyPI version](https://badge.fury.io/py/sqldown.svg)](https://pypi.org/project/sqldown/)
+[![Python versions](https://img.shields.io/pypi/pyversions/sqldown.svg)](https://pypi.org/project/sqldown/)
+[![CI/CD](https://github.com/mbailey/sqldown/actions/workflows/ci.yml/badge.svg)](https://github.com/mbailey/sqldown/actions)
 
-## Status
+**Bidirectional markdown ↔ SQLite conversion** - Load markdown files into SQLite, query with SQL, and export back to markdown.
 
-✅ **MVP Features Implemented:**
-- ✅ Column limit validation with `--max-columns` flag
-- ✅ Top-N section extraction with `--top-sections` flag
-- ✅ Import with dynamic schema generation
-- ✅ Watch mode for auto-refresh
-- 🚧 Dump command (planned)
-- 🚧 Info command (planned)
+## Features
 
-See [SPECIFICATION.md](SPECIFICATION.md) for the complete v0.1 design.
-See [REVIEW.md](REVIEW.md) for Papa Bear's detailed design review.
+✅ **Production Ready (v0.1.0):**
+- Dynamic schema generation from YAML frontmatter and markdown structure
+- Column limit protection with intelligent section extraction
+- Import markdown collections into queryable SQLite databases
+- Export database rows back to markdown files
+- Watch mode for auto-refresh on file changes
+- Gitignore-aware file filtering
+- Smart change detection (skip unchanged files)
 
-## Philosophy
-
-- **Bidirectional**: Load markdown → SQLite, dump SQLite → markdown
-- **Simple**: Use sqlite3 for queries, Python for parsing
-- **Smart**: Dynamic schema, path-aware dumps, change detection
-- **Database as authority**: Enforces schema consistency
-
-## Quick Start (Future v0.1)
+## Installation
 
 ```bash
-# Load markdown files into database
+# Install from PyPI
+pip install sqldown
+
+# Or use uv for faster installation
+uv pip install sqldown
+```
+
+## Quick Start
+
+```bash
+# Load markdown files into SQLite
 sqldown load ~/tasks
 
 # Query with sqlite3
 sqlite3 sqldown.db "SELECT * FROM docs WHERE status='active'"
 
-# Dump back to markdown
+# Export back to markdown
 sqldown dump -d sqldown.db -o ~/restored
 
-# Get info
-sqldown info -d sqldown.db
+# Get database info
+sqldown info
+
+# Show table details
+sqldown info -t docs
 ```
 
-## Import Command
+## Load Command
 
 ```bash
-python3 bin/import.py --db DATABASE --table TABLE --root PATH [OPTIONS]
+sqldown load PATH [OPTIONS]
 ```
 
 **What it does:**
 - Scans markdown files recursively
-- Parses YAML frontmatter → columns
+- Parses YAML frontmatter → database columns
 - Extracts H2 sections → `section_*` columns
-- **Creates schema dynamically** based on discovered fields
-- Upserts into SQLite (idempotent - run multiple times safely)
+- Creates schema dynamically based on discovered fields
+- Upserts into SQLite (idempotent - safe to run multiple times)
+- Respects `.gitignore` patterns automatically
 
 **Options:**
-- `--db PATH` - Database file (creates if doesn't exist)
-- `--table NAME` - Table name (default: `docs`)
-- `--root PATH` - Directory containing markdown files
-- `--pattern GLOB` - File pattern (default: `**/*.md`)
+- `-d, --db PATH` - Database file (default: `sqldown.db`)
+- `-t, --table NAME` - Table name (default: `docs`)
+- `-p, --pattern GLOB` - File pattern (default: `**/*.md`)
 - `--max-columns N` - Maximum allowed columns (default: 1800, SQLite limit: 2000)
 - `--top-sections N` - Extract only top N most common sections (default: 20, 0=all)
-- `--watch, -w` - Watch for file changes and auto-update
-- `--verbose, -v` - Show progress
+- `-w, --watch` - Watch for file changes and auto-update
+- `-v, --verbose` - Show detailed progress
+
+## Dump Command
+
+```bash
+sqldown dump -d DATABASE -o OUTPUT_DIR [OPTIONS]
+```
+
+**What it does:**
+- Exports database rows back to markdown files
+- Reconstructs original markdown structure with frontmatter
+- Preserves file paths from original import
+- Skips unchanged files (smart change detection)
+- Supports SQL filtering to export subsets
+
+**Options:**
+- `-d, --db PATH` - Database file (required)
+- `-t, --table NAME` - Table name (default: `docs`)
+- `-o, --output PATH` - Output directory (required)
+- `-f, --filter WHERE` - SQL WHERE clause to filter rows
+- `--force` - Always write files, even if unchanged
+- `--dry-run` - Preview what would be exported without writing
+- `-v, --verbose` - Show detailed progress
+
+**Examples:**
+```bash
+# Export all documents
+sqldown dump -d cache.db -o ~/restored
+
+# Export only active tasks
+sqldown dump -d cache.db -t tasks -o ~/active --filter "status='active'"
+
+# Preview export without writing files
+sqldown dump -d cache.db -o ~/export --dry-run
+```
+
+## Info Command
+
+```bash
+sqldown info [OPTIONS]
+```
+
+**What it does:**
+- Shows database statistics and table information
+- Lists all tables with document counts
+- Displays column breakdown (frontmatter vs sections)
+- Provides schema details for specific tables
+
+**Options:**
+- `-d, --db PATH` - Database file (default: `sqldown.db` if exists)
+- `-t, --table NAME` - Show detailed info for specific table
+
+**Examples:**
+```bash
+# Show database overview (uses sqldown.db if present)
+sqldown info
+
+# Show info for specific database
+sqldown info -d cache.db
+
+# Show detailed table information
+sqldown info -t tasks
+```
 
 ## Using SQLite3
 
@@ -131,7 +201,7 @@ SQLite has a hard limit of 2000 columns per table. With diverse markdown documen
 
 ```bash
 # Extract only top 20 most common sections (default)
-python3 bin/import.py --db cache.db --root ~/tasks --top-sections 20
+sqldown load ~/tasks -d cache.db --top-sections 20
 
 # Result: 5,225 tasks → 116 columns ✅
 # - 7 base columns (_id, _path, title, body, lead, _sections, file_modified)
@@ -147,7 +217,7 @@ python3 bin/import.py --db cache.db --root ~/tasks --top-sections 20
 **Column limit validation:**
 ```bash
 # Check if your documents will fit before importing
-python3 bin/import.py --db test.db --root ~/docs --verbose
+sqldown load ~/docs -d test.db --verbose
 
 # Output shows breakdown:
 # 📊 Column breakdown:
@@ -171,9 +241,9 @@ One database, multiple tables:
 
 ```bash
 # Import different document types
-python3 bin/import.py --db cache.db --table tasks --root ~/tasks
-python3 bin/import.py --db cache.db --table notes --root ~/notes
-python3 bin/import.py --db cache.db --table skills --root ~/.claude/skills
+sqldown load ~/tasks -d cache.db -t tasks
+sqldown load ~/notes -d cache.db -t notes
+sqldown load ~/.claude/skills -d cache.db -t skills
 
 # Query them
 sqlite3 cache.db "SELECT * FROM tasks WHERE status='active'"
@@ -196,7 +266,7 @@ Import is idempotent - just run it again:
 
 ```bash
 # Add this to cron or a git hook
-python3 bin/import.py --db cache.db --table tasks --root ~/tasks
+sqldown load ~/tasks -d cache.db -t tasks
 ```
 
 **Watch mode (auto-refresh):**
@@ -205,7 +275,7 @@ Use the `--watch` / `-w` flag to automatically update the cache when files chang
 
 ```bash
 # Watch mode: import once, then auto-update on file changes
-md-import --db cache.db --table tasks --root ~/tasks --watch
+sqldown load ~/tasks -d cache.db -t tasks --watch
 
 # Output:
 # ✅ Imported 87 documents into cache.db:tasks
@@ -237,163 +307,73 @@ sqlite3 cache.db "SELECT title FROM tasks WHERE body LIKE '%cache%'"
 sqlite3 cache.db "SELECT title FROM tasks WHERE priority='high' AND status != 'completed'"
 ```
 
-## Why Not Use query.py?
+## Philosophy
 
-You could! But `sqlite3` gives you:
-- Full SQL power (no wrapper limitations)
-- Standard tool everyone knows
-- CSV export, JSON mode, etc.
-- Interactive shell with history
-- Better performance (no Python overhead)
+SQLDown follows the Unix philosophy: do one thing well.
 
-The import tool adds value (markdown parsing). Query wrappers don't.
+- **Load**: SQLDown handles the complex markdown → SQLite conversion
+- **Query**: sqlite3 provides perfect SQL interface (no wrapper needed)
+- **Dump**: SQLDown reconstructs markdown from database rows
+
+Why not wrap sqlite3? Because it's already perfect for queries:
+- Full SQL power without wrapper limitations
+- Standard tool with excellent documentation
+- Multiple output formats (CSV, JSON, column, etc.)
+- Interactive shell with history and completion
+- Zero overhead for read operations
 
 ## Requirements
 
-**Prerequisites:**
-- Python 3.7+ (includes sqlite3 module - standard library)
-- sqlite3 CLI (built-in on macOS 10.4+ and most Linux distributions)
-- [uv](https://github.com/astral-sh/uv) - Python package installer and runner
+- Python 3.8+ (includes sqlite3 module)
+- sqlite3 CLI (built-in on macOS/Linux)
 
-**Dependencies (handled automatically by uv):**
+**Python Dependencies** (installed automatically):
+- click >= 8.0 - CLI framework
+- sqlite-utils >= 3.30 - SQLite schema management
+- PyYAML >= 6.0 - YAML frontmatter parsing
+- pathspec >= 0.11 - Gitignore pattern support
+- watchdog >= 3.0 - File system monitoring
 
-The `md-import` script uses uv's inline dependency specification, so dependencies are automatically installed on first run:
-- sqlite-utils >= 3.30
-- click >= 8.0
-- PyYAML >= 6.0
-- pathspec >= 0.11.0
+## Integration
 
-No manual pip install or virtual environment setup needed!
+SQLDown is designed for both human and AI use:
 
-## Claude Code Integration
+**For Developers:**
+- Simple CLI with sensible defaults
+- Watch mode for development workflows
+- Smart change detection saves time
+- Direct sqlite3 access for queries
 
-The SKILL.md file teaches Claude to:
-1. Use `bin/import.py` to create/refresh caches
-2. Use `sqlite3` for all queries
-3. Start with simple queries, then get complex if needed
-4. Read full markdown files only when necessary (progressive disclosure)
+**For AI Assistants:**
+- Efficient token usage via SQL queries
+- Progressive disclosure pattern
+- Query metadata first, read files only when needed
+- Structured data extraction from markdown
+
+## Contributing
+
+Contributions welcome! Please check out the [issues](https://github.com/mbailey/sqldown/issues) on GitHub.
 
 ## License
 
 MIT
 
----
+## Changelog
 
-## Development Log
+### v0.1.0 (2025-01-14)
 
-### 2025-01-13 - Design Session: Python Package Specification
+**Initial PyPI Release** 🎉
 
-**Session Goals:**
-- Design conversion from uv single-file script to proper Python package
-- Plan bidirectional markdown ↔ SQLite workflow
-- Define CLI interface and conventions
+- Full bidirectional markdown ↔ SQLite conversion
+- Dynamic schema generation from YAML frontmatter
+- Intelligent column limit protection (SQLite 2000 column limit)
+- Top-N section extraction for diverse document collections
+- Watch mode for automatic file sync
+- Smart change detection on export
+- Comprehensive CLI with `load`, `dump`, and `info` commands
+- Python 3.8+ support
 
-**Key Decisions:**
+### Development History
 
-1. **Package Structure:**
-   - PyPI name: `sqldown`
-   - CLI commands: `load`, `dump`, `info`
-   - Modern packaging with `pyproject.toml` and `src/` layout
-
-2. **Command Design:**
-   - `sqldown load` - markdown → database (with `--where` for simple filtering)
-   - `sqldown dump` - database → markdown (with full SQL `--filter`)
-   - `sqldown info` - database stats and table summaries
-   - All commands support `--dry-run`
-
-3. **Smart Features:**
-   - Path-aware dumping (only dump files under target directory)
-   - Change detection (only write files if content differs)
-   - Frontmatter filtering during load (simple key=value in v0.1)
-   - Automatic gitignore respect
-   - Watch mode for file changes
-
-4. **Configuration:**
-   - Default database: `./sqldown.db`
-   - Environment variable: `SQLDOWN_DB`
-   - Tab completion for bash/zsh/fish
-
-5. **Conventions:**
-   - Recommended frontmatter field: `doctype` (for document type classification)
-   - Short flags: -d (db), -t (table), -o (output), -w (watch), -v (verbose)
-   - Database as schema authority
-
-**Testing:**
-- Imported 686 tasks from ~/tasks into test database
-- Hit SQLite's 2000 column limit (1927 section columns, 72 frontmatter fields)
-- Confirmed round-trip capability (body field contains full markdown)
-
-**Artifacts:**
-- [SPECIFICATION.md](SPECIFICATION.md) - Complete v0.1 design (627 lines)
-- [REVIEW.md](REVIEW.md) - Papa Bear's design review and recommendations
-- Test database analysis showing column distribution
-
-**Future Enhancements (v0.2+):**
-- Full SQL WHERE during load (currently simple key=value)
-- Bidirectional watch mode (database changes → file updates)
-- JSON overflow columns for >2000 column scenarios
-- FTS5 full-text search
-- Configuration file support (.sqldown.toml)
-
-**Critical Items from Review:**
-- Address 2000 column limit with JSON overflow in v0.1 (not deferred)
-- Add comprehensive error handling and recovery
-- Implement transaction batching for performance
-- Add SQL injection protection in filter clauses
-- Validate path traversal security in dump
-
-**Next Steps:**
-- Phase 0: Address critical review items (column overflow, error handling)
-- Phase 1: Rename markdown-cache → sqldown throughout codebase
-- Phase 2: Create package structure (src/sqldown/, pyproject.toml)
-- Phase 3: Implement core load/dump functions
-- Phase 4: Implement CLI with Click
-- Phase 5: Add tests (>80% coverage)
-- Phase 6: Update documentation
-
-### 2025-01-13 - Column Limit Protection Implemented
-
-**Session Goals:**
-- Address Papa Bear's critical review finding: SQLite 2000 column limit
-- Implement MVP column limit validation
-- Add top-N section extraction feature
-
-**Implemented Features:**
-
-1. **Column Limit Validation:**
-   - Added `--max-columns` flag (default: 1800, leaving safety margin)
-   - Pre-import validation scans all documents and counts unique columns
-   - Shows detailed breakdown: base/frontmatter/section columns
-   - Warning at 90% threshold
-   - Stops import with error if limit exceeded (prevents database corruption)
-
-2. **Top-N Section Extraction:**
-   - Added `--top-sections` flag (default: 20, 0=extract all)
-   - Analyzes section frequency across entire document collection
-   - Extracts only the N most common sections as queryable columns
-   - All other sections preserved in `body` field
-   - Reduces column count from 6,694 → 116 for real-world task collection
-
-**Testing Results:**
-- 5,225 task documents successfully imported
-- Without top-sections: Would create 6,694 columns (exceeds 2000 limit)
-- With top-20 sections: Creates 116 columns (well within limit)
-- Top extracted sections: overview, usage, objective, notes, next_steps, troubleshooting, installation, etc.
-
-**Validation:**
-- ✅ Correctly stops import when limit exceeded
-- ✅ Shows warning when approaching limit (90% threshold)
-- ✅ Proper error codes (exit 1 on failure, 0 on success)
-- ✅ Detailed column breakdown in verbose mode
-- ✅ All content preserved in body field
-
-**Documentation Updated:**
-- README.md: Added column limit protection section
-- IDEAS.md: Added section whitelisting and body sync concepts
-- Commit messages document rationale and implementation
-
-**Next Steps:**
-- Update SPECIFICATION.md to reflect implemented features
-- Update SKILL.md with new CLI flags and patterns
-- Create taskmaster tasks for ongoing sqldown development
-- Consider: section whitelisting (explicit list vs. frequency-based)
+See [SPECIFICATION.md](SPECIFICATION.md) for the complete design.
+See [REVIEW.md](REVIEW.md) for architectural decisions and trade-offs.
