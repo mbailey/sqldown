@@ -11,6 +11,13 @@ from .core import (
     reconstruct_markdown,
     validate_column_count,
 )
+from .utils import (
+    find_git_root,
+    get_default_database_path,
+    infer_table_name,
+    load_cascading_env,
+    get_config_value,
+)
 
 
 @click.group()
@@ -26,13 +33,14 @@ def main():
 
 @main.command()
 @click.argument('root_path', type=click.Path(exists=True, path_type=Path))
-@click.option('-d', '--db', default='sqldown.db', type=click.Path(path_type=Path),
-              help='Database file (default: sqldown.db)')
-@click.option('-t', '--table', default='docs', help='Table name (default: docs)')
+@click.option('-d', '--db', type=click.Path(path_type=Path), default=None,
+              help='Database file (default: .sqldown.db in project root)')
+@click.option('-t', '--table', default=None,
+              help='Table name (default: inferred from directory name)')
 @click.option('-p', '--pattern', default='**/*.md', help='File pattern (default: **/*.md)')
-@click.option('--max-columns', default=1800, type=int,
+@click.option('--max-columns', type=int, default=None,
               help='Maximum allowed columns (default: 1800, SQLite limit: 2000)')
-@click.option('--top-sections', default=20, type=int,
+@click.option('--top-sections', type=int, default=None,
               help='Extract only top N most common sections (default: 20, 0=all)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 @click.help_option('-h', '--help')
@@ -44,6 +52,36 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
       sqldown load ~/notes -d notes.db -t my_notes
       sqldown load ~/tasks --top-sections 10
     """
+    # Load cascading configuration
+    config = load_cascading_env(root_path)
+
+    # Apply smart defaults
+    if db is None:
+        # Check config, then use smart default
+        db_path = get_config_value(config, 'DB', None)
+        if db_path:
+            db = Path(db_path)
+        else:
+            db = get_default_database_path(root_path)
+
+    if table is None:
+        # Check config for table name or prefix
+        table_prefix = get_config_value(config, 'TABLE_PREFIX', '')
+        table = get_config_value(config, 'TABLE', None)
+        if not table:
+            table = table_prefix + infer_table_name(root_path)
+
+    # Apply config defaults for other options
+    if max_columns is None:
+        max_columns = get_config_value(config, 'MAX_COLUMNS', 1800)
+
+    if top_sections is None:
+        top_sections = get_config_value(config, 'TOP_SECTIONS', 20)
+
+    # Check for verbose in config
+    if not verbose:
+        verbose = get_config_value(config, 'VERBOSE', False)
+
     if verbose:
         click.echo(f"📂 Scanning {root_path} for {pattern}")
         click.echo(f"💾 Database: {db}")
@@ -138,8 +176,8 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
 
 
 @main.command()
-@click.option('-d', '--db', required=True, type=click.Path(exists=True, path_type=Path),
-              help='Database file (required)')
+@click.option('-d', '--db', type=click.Path(path_type=Path), default=None,
+              help='Database file (default: .sqldown.db in project root)')
 @click.option('-t', '--table', default='docs', help='Table name (default: docs)')
 @click.option('-o', '--output', required=True, type=click.Path(path_type=Path),
               help='Output directory (required)')
@@ -152,10 +190,51 @@ def dump(db, table, output, filter_where, force, dry_run, verbose):
     """Export database rows to markdown files.
 
     Examples:
+      sqldown dump -o ~/restored                     # Uses .sqldown.db in project root
       sqldown dump -d cache.db -o ~/restored
-      sqldown dump -d cache.db -t tasks -o ~/active --filter "status='active'"
-      sqldown dump -d cache.db -o ~/export --dry-run
+      sqldown dump -t tasks -o ~/active --filter "status='active'"
+      sqldown dump -o ~/export --dry-run
     """
+    # Load configuration
+    config = load_cascading_env()
+
+    # Apply smart defaults for database
+    if db is None:
+        # Check config, then use smart default
+        db_path = get_config_value(config, 'DB', None)
+        if db_path:
+            db = Path(db_path)
+        else:
+            # Try to find database in project root
+            db = get_default_database_path()
+
+            # If it doesn't exist, also try sqldown.db in current directory
+            if not db.exists():
+                alt_db = Path('sqldown.db')
+                if alt_db.exists():
+                    db = alt_db
+                else:
+                    click.echo(f"❌ No database found. Tried:", err=True)
+                    click.echo(f"   - {db}", err=True)
+                    click.echo(f"   - {alt_db}", err=True)
+                    click.echo(f"   Use -d to specify a database file", err=True)
+                    sys.exit(1)
+
+    # Check database exists
+    if not db.exists():
+        click.echo(f"❌ Database not found: {db}", err=True)
+        sys.exit(1)
+
+    # Apply config defaults for other options
+    if not force:
+        force = get_config_value(config, 'DUMP_FORCE', False)
+
+    if not dry_run:
+        dry_run = get_config_value(config, 'DUMP_DRY_RUN', False)
+
+    if not verbose:
+        verbose = get_config_value(config, 'VERBOSE', False)
+
     database = Database(str(db))
 
     # Check table exists
@@ -249,27 +328,42 @@ def dump(db, table, output, filter_where, force, dry_run, verbose):
 
 
 @main.command()
-@click.option('-d', '--db', type=click.Path(path_type=Path),
-              help='Database file (default: sqldown.db if exists in current directory)')
+@click.option('-d', '--db', type=click.Path(path_type=Path), default=None,
+              help='Database file (default: .sqldown.db in project root)')
 @click.option('-t', '--table', help='Show details for specific table')
 @click.help_option('-h', '--help')
 def info(db, table):
     """Show database information.
 
     Examples:
-      sqldown info                  # Uses sqldown.db if present
+      sqldown info                  # Uses .sqldown.db in project root
       sqldown info -d cache.db
       sqldown info -t tasks          # Shows specific table details
     """
-    # Default to sqldown.db if it exists and no database specified
+    # Load configuration
+    config = load_cascading_env()
+
+    # Apply smart defaults for database
     if db is None:
-        default_db = Path('sqldown.db')
-        if default_db.exists():
-            db = default_db
+        # Check config, then use smart default
+        db_path = get_config_value(config, 'DB', None)
+        if db_path:
+            db = Path(db_path)
         else:
-            click.echo("❌ No database specified and sqldown.db not found", err=True)
-            click.echo("   Use -d to specify a database file", err=True)
-            sys.exit(1)
+            # Try to find database in project root
+            db = get_default_database_path()
+
+            # If it doesn't exist, also try sqldown.db in current directory
+            if not db.exists():
+                alt_db = Path('sqldown.db')
+                if alt_db.exists():
+                    db = alt_db
+                else:
+                    click.echo(f"❌ No database found. Tried:", err=True)
+                    click.echo(f"   - {db}", err=True)
+                    click.echo(f"   - {alt_db}", err=True)
+                    click.echo(f"   Use -d to specify a database file", err=True)
+                    sys.exit(1)
 
     # Check database exists
     if not db.exists():
