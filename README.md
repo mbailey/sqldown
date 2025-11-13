@@ -1,4 +1,6 @@
-# [WIP] SQLDown - pre-alpha USE AT OWN RISK (always)
+# [WIP] SQLDown *pre-alpha*
+
+USE AT OWN RISK
 
 [![PyPI version](https://badge.fury.io/py/sqldown.svg)](https://pypi.org/project/sqldown/)
 [![Python versions](https://img.shields.io/pypi/pyversions/sqldown.svg)](https://pypi.org/project/sqldown/)
