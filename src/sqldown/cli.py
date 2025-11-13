@@ -22,6 +22,7 @@ from .utils import (
 
 @click.group()
 @click.version_option(version="0.1.0")
+@click.help_option('-h', '--help')
 def main():
     """SQLDown - Bidirectional markdown ↔ SQLite conversion.
 
@@ -42,6 +43,7 @@ def main():
 @click.option('--top-sections', type=int, default=None,
               help='Extract only top N most common sections (default: 20, 0=all)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+@click.help_option('-h', '--help')
 def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
     """Load markdown files into database.
 
@@ -183,6 +185,7 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
 @click.option('--force', is_flag=True, help='Always write files, even if unchanged')
 @click.option('--dry-run', is_flag=True, help='Show what would be dumped without writing')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
+@click.help_option('-h', '--help')
 def dump(db, table, output, filter_where, force, dry_run, verbose):
     """Export database rows to markdown files.
 
@@ -328,6 +331,7 @@ def dump(db, table, output, filter_where, force, dry_run, verbose):
 @click.option('-d', '--db', type=click.Path(path_type=Path), default=None,
               help='Database file (default: .sqldown.db in project root)')
 @click.option('-t', '--table', help='Show details for specific table')
+@click.help_option('-h', '--help')
 def info(db, table):
     """Show database information.
 
@@ -378,27 +382,101 @@ def info(db, table):
         columns = list(tbl.columns)
         count = tbl.count
 
-        click.echo(f"Table: {table}")
-        click.echo(f"Rows: {count:,}")
-        click.echo(f"Columns: {len(columns)}")
-        click.echo()
-        click.echo("Columns:")
+        # Categorize columns
+        core_columns = ['_id', '_path', '_sections', 'title', 'body', 'lead', 'file_modified']
+        frontmatter_columns = []
+        section_columns = []
+
         for col in columns:
-            click.echo(f"  - {col.name} ({col.type})")
+            col_name = col.name
+            if col_name in core_columns:
+                continue
+            elif col_name.startswith('section_'):
+                section_columns.append(col_name)
+            else:
+                frontmatter_columns.append(col_name)
+
+        # Display table info
+        click.echo(f"\n📊 Table: {table}")
+        click.echo(f"{'─' * 40}")
+        click.echo(f"📝 Documents: {count:,}")
+        click.echo(f"📋 Total columns: {len(columns)}")
+        click.echo()
+
+        # Column breakdown
+        click.echo(f"Column breakdown:")
+        click.echo(f"  • Core fields: {len(core_columns)}")
+        click.echo(f"  • Frontmatter fields: {len(frontmatter_columns)}")
+        click.echo(f"  • Section fields: {len(section_columns)}")
+
+        # Show sample frontmatter fields
+        if frontmatter_columns:
+            click.echo()
+            click.echo(f"Frontmatter fields ({len(frontmatter_columns)}):")
+            sample = frontmatter_columns[:10]
+            for field in sorted(sample):
+                click.echo(f"  - {field}")
+            if len(frontmatter_columns) > 10:
+                click.echo(f"  ... and {len(frontmatter_columns) - 10} more")
+
+        # Show sample sections
+        if section_columns:
+            click.echo()
+            click.echo(f"Document sections ({len(section_columns)}):")
+            # Clean up section names for display
+            section_names = [col.replace('section_', '').replace('_', ' ').title()
+                           for col in section_columns]
+            sample = section_names[:10]
+            for section in sorted(sample):
+                click.echo(f"  - {section}")
+            if len(section_names) > 10:
+                click.echo(f"  ... and {len(section_names) - 10} more")
+
     else:
         # Show database overview
         db_path = Path(db)
         size_mb = db_path.stat().st_size / (1024 * 1024)
 
-        click.echo(f"Database: {db_path} ({size_mb:.1f} MB)")
-        click.echo()
-        click.echo("Tables:")
+        tables = database.table_names()
 
-        for table_name in database.table_names():
-            tbl = database[table_name]
-            count = tbl.count
-            col_count = len(list(tbl.columns))
-            click.echo(f"  {table_name:20s} {count:6,} rows, {col_count:4,} columns")
+        click.echo(f"\n💾 Database: {db_path.name}")
+        click.echo(f"{'─' * 40}")
+        click.echo(f"📁 Location: {db_path.absolute()}")
+        click.echo(f"💿 Size: {size_mb:.1f} MB")
+        click.echo(f"📊 Tables: {len(tables)}")
+        click.echo()
+
+        if tables:
+            click.echo("Tables:")
+            total_rows = 0
+            for table_name in tables:
+                tbl = database[table_name]
+                count = tbl.count
+                total_rows += count
+                col_count = len(list(tbl.columns))
+
+                # Count column types
+                columns = list(tbl.columns)
+                frontmatter = sum(1 for c in columns if not c.name.startswith('section_')
+                                and c.name not in ['_id', '_path', '_sections', 'title',
+                                                  'body', 'lead', 'file_modified'])
+                sections = sum(1 for c in columns if c.name.startswith('section_'))
+
+                click.echo(f"  📋 {table_name}")
+                click.echo(f"     • {count:,} documents")
+                click.echo(f"     • {col_count} columns ({frontmatter} frontmatter, {sections} sections)")
+
+            if len(tables) > 1:
+                click.echo()
+                click.echo(f"Total: {total_rows:,} documents across all tables")
+        else:
+            click.echo("  (no tables)")
+
+        click.echo()
+        click.echo("💡 Tips:")
+        click.echo(f"  • Query with: sqlite3 {db_path.name} \"SELECT * FROM table LIMIT 5\"")
+        click.echo(f"  • Show schema: sqlite3 {db_path.name} \".schema table\"")
+        click.echo(f"  • Table details: sqldown info -t <table>")
 
 
 if __name__ == '__main__':
