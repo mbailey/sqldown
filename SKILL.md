@@ -7,7 +7,7 @@ description: Bidirectional markdown ↔ SQLite conversion with column limit prot
 
 ## Core Concept
 
-**Import with Python. Query with sqlite3. Dump when needed.**
+**Load with sqldown. Query with sqlite3. Dump when needed.**
 
 This skill handles bidirectional markdown ↔ SQLite conversion with intelligent column limit protection. For queries, use `sqlite3` directly - it's already perfect.
 
@@ -22,78 +22,56 @@ This skill handles bidirectional markdown ↔ SQLite conversion with intelligent
 
 ### Import: Create or Update Tables
 
-Use `md-import` - a uv single-file script with inline dependencies.
+Use `sqldown load` - loads markdown files into SQLite database.
 
-**After metool installation:**
+**Command:**
 ```bash
-md-import --db cache.db --table TABLE --root PATH [OPTIONS]
-```
-
-**Before installation or for direct execution:**
-```bash
-/path/to/markdown-cache/bin/md-import --db cache.db --table TABLE --root PATH [OPTIONS]
+sqldown load PATH [OPTIONS]
 ```
 
 **What it does:**
+- Scans markdown files recursively
 - Parses YAML frontmatter → database columns
 - Extracts H2 sections → `section_*` columns
-- Generates schema dynamically based on discovered fields
-- Respects .gitignore automatically (disable with `--no-gitignore`)
-- Upserts (idempotent - safe to run multiple times)
+- Creates schema dynamically based on discovered fields
+- Upserts into SQLite (idempotent - safe to run multiple times)
+- Respects `.gitignore` patterns automatically
 
 **Options:**
-- `--db PATH` - Database file (default: cache.db)
-- `--table NAME` - Table name (default: docs)
-- `--root PATH` - Root directory with markdown files
-- `--pattern GLOB` - File pattern (default: **/*.md)
+- `-d, --db PATH` - Database file (default: `sqldown.db`)
+- `-t, --table NAME` - Table name (default: `docs`)
+- `-p, --pattern GLOB` - File pattern (default: `**/*.md`)
 - `--max-columns N` - Maximum allowed columns (default: 1800, SQLite limit: 2000)
 - `--top-sections N` - Extract only top N most common sections (default: 20, 0=all)
-- `--exclude PATTERN` - Additional exclusions beyond .gitignore (can use multiple times)
-- `--no-gitignore` - Disable automatic .gitignore filtering
-- `--watch, -w` - Watch for file changes and auto-update (stays running until Ctrl-C)
-- `--verbose, -v` - Show detailed progress including column breakdown
+- `-w, --watch` - Watch for file changes and auto-update
+- `-v, --verbose` - Show detailed progress
 
-**Examples (using command after metool install):**
+**Examples:**
 ```bash
-# Import tasks (respects .gitignore automatically)
-md-import --db ~/cache.db --table tasks --root ~/tasks
+# Load markdown files into SQLite
+sqldown load ~/tasks
 
-# Import notes
-md-import --db ~/cache.db --table notes --root ~/notes
+# Specify database and table
+sqldown load ~/tasks -d cache.db -t tasks
 
-# Import skills with pattern
-md-import --db ~/cache.db --table skills --root ~/.claude/skills --pattern "*/SKILL.md"
+# Load notes
+sqldown load ~/notes -d cache.db -t notes
 
-# Import without gitignore filtering
-md-import --db ~/cache.db --table all_docs --root ~/docs --no-gitignore
-
-# Additional exclusions
-md-import --db ~/cache.db --table tasks --root ~/tasks --exclude '**/test/**'
+# Load with specific pattern
+sqldown load ~/.claude/skills -d cache.db -t skills -p "*/SKILL.md"
 
 # Watch mode: auto-update on file changes
-md-import --db ~/cache.db --table tasks --root ~/tasks --watch
+sqldown load ~/tasks -w
 
-# Column limit protection - extract only top 20 sections (default)
-md-import --db ~/cache.db --table tasks --root ~/tasks
-
-# Extract top 10 sections (fewer columns)
-md-import --db ~/cache.db --table tasks --root ~/tasks --top-sections 10
+# Column limit protection - extract only top 10 sections
+sqldown load ~/tasks --top-sections 10
 
 # Extract all sections (may hit 2000 column limit with diverse docs)
-md-import --db ~/cache.db --table tasks --root ~/tasks --top-sections 0
+sqldown load ~/tasks --top-sections 0
 
-# Check column breakdown before import
-md-import --db ~/cache.db --table tasks --root ~/tasks --verbose
+# Check column breakdown with verbose output
+sqldown load ~/tasks -v
 # Output shows: Base columns: 7, Frontmatter: 89, Sections: 20, Total: 116
-```
-
-**For direct execution before metool install:**
-```bash
-# Direct path to script
-/path/to/markdown-cache/bin/md-import --db ~/cache.db --table tasks --root ~/tasks
-
-# With watch mode
-/path/to/markdown-cache/bin/md-import --db ~/cache.db --table tasks --root ~/tasks --watch
 ```
 
 ### Query: Use sqlite3 Directly
@@ -222,10 +200,10 @@ This keeps context usage low while still finding what you need.
 Keep different document types in separate tables:
 
 ```bash
-# Import each type
-md-import --db ~/cache.db --table tasks --root ~/tasks
-md-import --db ~/cache.db --table notes --root ~/notes
-md-import --db ~/cache.db --table skills --root ~/.claude/skills
+# Load each type
+sqldown load ~/tasks -d cache.db -t tasks
+sqldown load ~/notes -d cache.db -t notes
+sqldown load ~/.claude/skills -d cache.db -t skills
 
 # Query across them
 sqlite3 ~/cache.db "
@@ -237,12 +215,12 @@ sqlite3 ~/cache.db "
 
 ## Refresh Strategy
 
-**One-time import (manual refresh):**
+**One-time load (manual refresh):**
 
-Import is idempotent - run after file changes:
+Load is idempotent - run after file changes:
 
 ```bash
-md-import --db ~/cache.db --table tasks --root ~/tasks --verbose
+sqldown load ~/tasks -d cache.db -t tasks -v
 ```
 
 **Watch mode (automatic refresh):**
@@ -251,7 +229,7 @@ Use `--watch` to automatically update when files change:
 
 ```bash
 # Starts watching - runs until Ctrl-C
-md-import --db ~/cache.db --table tasks --root ~/tasks --watch
+sqldown load ~/tasks -d cache.db -t tasks -w
 
 # Output shows real-time updates:
 # [2025-01-15 10:23:45] Updated: AG-22_feat_add-configuration/README.md
@@ -270,12 +248,12 @@ Watch mode is ideal for development workflows where you want the cache to stay i
 - Interactive shell with history and tab completion
 - Better performance (no Python startup overhead)
 
-**uv script (md-import) gives you:**
+**sqldown load gives you:**
 - Markdown + YAML frontmatter parsing
 - Dynamic schema generation
 - H2 section extraction
 - Automatic .gitignore filtering
-- Inline dependencies (no pip install needed)
+- Watch mode for auto-updates
 
 This division of responsibility keeps tools simple and powerful.
 
@@ -301,55 +279,108 @@ This division of responsibility keeps tools simple and powerful.
    Only after identifying relevant documents via SQL.
 
 5. **Trust .gitignore filtering:**
-   By default, md-import respects .gitignore. Use `--no-gitignore` only when explicitly needed.
+   By default, sqldown load respects .gitignore automatically.
 
 ## Requirements
 
 **Prerequisites:**
-- Python 3.7+ (includes sqlite3 module - standard library)
+- Python 3.10+ (includes sqlite3 module - standard library)
 - sqlite3 CLI (built-in on macOS 10.4+ and most Linux distributions)
-- [uv](https://github.com/astral-sh/uv) - Python package installer and runner
 
-**Dependencies (handled automatically by uv):**
+**Installation:**
 
-The `md-import` script uses uv's inline dependency specification. Dependencies are automatically installed on first run and cached for subsequent runs:
-- sqlite-utils >= 3.30 (dynamic schema generation)
-- click >= 8.0 (CLI interface)
-- PyYAML >= 6.0 (YAML frontmatter parsing)
-- pathspec >= 0.11.0 (gitignore filtering)
+```bash
+# Install from PyPI
+pip install sqldown
 
-No manual pip install or virtual environment setup needed!
+# Or use uv for faster installation
+uv pip install sqldown
+```
 
 ## Limitations
 
-- Manual refresh (no auto file-watching)
 - Best for <100K documents
-- SQLite column limit: 2000 columns max (md-import detects and reports)
+- SQLite column limit: 2000 columns max (sqldown detects and reports)
 - No built-in full-text search (though SQLite FTS5 could be added)
 
-## Future Ideas
+## Additional Commands
 
-- Auto-refresh on file changes
-- FTS5 full-text search indexes
-- Graph queries for linked documents
-- Embedding-based semantic search
+### Dump: Export Back to Markdown
+
+```bash
+sqldown dump -d DATABASE -o OUTPUT_DIR [OPTIONS]
+```
+
+**What it does:**
+- Exports database rows back to markdown files
+- Reconstructs original markdown structure with frontmatter
+- Preserves file paths from original import
+- Skips unchanged files (smart change detection)
+- Supports SQL filtering to export subsets
+
+**Options:**
+- `-d, --db PATH` - Database file (required)
+- `-t, --table NAME` - Table name (default: `docs`)
+- `-o, --output PATH` - Output directory (required)
+- `-f, --filter WHERE` - SQL WHERE clause to filter rows
+- `--force` - Always write files, even if unchanged
+- `--dry-run` - Preview what would be exported without writing
+- `-v, --verbose` - Show detailed progress
+
+**Examples:**
+```bash
+# Export all documents
+sqldown dump -d cache.db -o ~/restored
+
+# Export only active tasks
+sqldown dump -d cache.db -t tasks -o ~/active --filter "status='active'"
+
+# Preview export without writing files
+sqldown dump -d cache.db -o ~/export --dry-run
+```
+
+### Info: Database Statistics
+
+```bash
+sqldown info [OPTIONS]
+```
+
+**What it does:**
+- Shows database statistics and table information
+- Lists all tables with document counts
+- Displays column breakdown (frontmatter vs sections)
+- Provides schema details for specific tables
+
+**Options:**
+- `-d, --db PATH` - Database file (default: `sqldown.db` if exists)
+- `-t, --table NAME` - Show detailed info for specific table
+
+**Examples:**
+```bash
+# Show database overview
+sqldown info
+
+# Show info for specific database
+sqldown info -d cache.db
+
+# Show detailed table information
+sqldown info -d cache.db -t tasks
+```
 
 ## Technical Details
-
-**uv Single-File Script:**
-- `md-import` uses uv's inline dependency specification
-- Dependencies declared in script header (sqlite-utils, click, pyyaml, pathspec)
-- No separate requirements.txt or virtual environment needed
-- First run: uv automatically installs dependencies
-- Subsequent runs: cached dependencies load instantly
 
 **Automatic .gitignore Support:**
 - Reads .gitignore from root directory by default
 - Uses pathspec library for gitignore pattern matching
 - Filters files before import to avoid unwanted content
-- Override with `--no-gitignore` when needed
+
+**Column Limit Protection:**
+- Uses `--top-sections` to extract only the N most common H2 sections
+- Prevents hitting SQLite's 2000 column limit
+- Rare sections remain in `body` field - nothing is lost
 
 ## Related Files
 
-- `bin/md-import` - uv single-file script (the import tool)
+- `bin/sqldown` - Main CLI tool
 - `README.md` - Human-facing documentation
+- `SPECIFICATION.md` - Technical specification
