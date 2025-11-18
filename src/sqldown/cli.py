@@ -38,9 +38,9 @@ def main():
 @click.option('-t', '--table', default=None,
               help='Table name (default: inferred from directory name)')
 @click.option('-p', '--pattern', default='**/*.md', help='File pattern (default: **/*.md)')
-@click.option('--max-columns', type=int, default=None,
+@click.option('-m', '--max-columns', type=int, default=None,
               help='Maximum allowed columns (default: 1800, SQLite limit: 2000)')
-@click.option('--top-sections', type=int, default=None,
+@click.option('-n', '--top-sections', type=int, default=None,
               help='Extract only top N most common sections (default: 20, 0=all)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 @click.help_option('-h', '--help')
@@ -183,7 +183,7 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
               help='Output directory (required)')
 @click.option('-f', '--filter', 'filter_where', help='SQL WHERE clause to filter rows')
 @click.option('--force', is_flag=True, help='Always write files, even if unchanged')
-@click.option('--dry-run', is_flag=True, help='Show what would be dumped without writing')
+@click.option('-n', '--dry-run', is_flag=True, help='Show what would be dumped without writing')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 @click.help_option('-h', '--help')
 def dump(db, table, output, filter_where, force, dry_run, verbose):

@@ -64,8 +64,8 @@ sqldown load PATH [OPTIONS]
 - `-d, --db PATH` - Database file (default: `sqldown.db`)
 - `-t, --table NAME` - Table name (default: `docs`)
 - `-p, --pattern GLOB` - File pattern (default: `**/*.md`)
-- `--max-columns N` - Maximum allowed columns (default: 1800, SQLite limit: 2000)
-- `--top-sections N` - Extract only top N most common sections (default: 20, 0=all)
+- `-m, --max-columns N` - Maximum allowed columns (default: 1800, SQLite limit: 2000)
+- `-n, --top-sections N` - Extract only top N most common sections (default: 20, 0=all)
 - `-w, --watch` - Watch for file changes and auto-update
 - `-v, --verbose` - Show detailed progress
 
@@ -88,7 +88,7 @@ sqldown dump -d DATABASE -o OUTPUT_DIR [OPTIONS]
 - `-o, --output PATH` - Output directory (required)
 - `-f, --filter WHERE` - SQL WHERE clause to filter rows
 - `--force` - Always write files, even if unchanged
-- `--dry-run` - Preview what would be exported without writing
+- `-n, --dry-run` - Preview what would be exported without writing
 - `-v, --verbose` - Show detailed progress
 
 **Examples:**
