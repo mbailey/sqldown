@@ -66,6 +66,7 @@ sqldown load PATH [OPTIONS]
 - `-p, --pattern GLOB` - File pattern (default: `**/*.md`)
 - `-m, --max-columns N` - Maximum allowed columns (default: 1800, SQLite limit: 2000)
 - `-n, --top-sections N` - Extract only top N most common sections (default: 20, 0=all)
+- `--prune` - Delete rows whose source file no longer exists (use only when this root and pattern cover the whole table)
 - `-w, --watch` - Watch for file changes and auto-update
 - `-v, --verbose` - Show detailed progress
 

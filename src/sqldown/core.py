@@ -176,6 +176,29 @@ def write_doc(database, table: str, doc: Dict) -> None:
     database[table].insert(doc, pk='_id', alter=True, replace=True)
 
 
+def prune_missing(database, table: str, md_files: List[Path], root: Path) -> int:
+    """Delete rows whose source file is not among `md_files`.
+
+    Rows are matched on `_id`, which is derived from the path relative to
+    `root`, so a renamed file's old row is removed too. A file that still
+    exists keeps its row even if it failed to parse this time.
+
+    Only use this when `md_files` covers everything that belongs in the
+    table: rows loaded from another root or pattern would be deleted.
+
+    Returns:
+        Number of rows deleted
+    """
+    if table not in database.table_names():
+        return 0
+    keep = {_doc_id(_relative_path(f, root)) for f in md_files}
+    stale = [row['_id'] for row in database[table].rows_where(select='_id')
+             if row['_id'] not in keep]
+    for doc_id in stale:
+        database[table].delete(doc_id)
+    return len(stale)
+
+
 def process_markdown_file(path: Path, root: Path, allowed_sections: Optional[Set[str]] = None) -> Dict:
     """Process a single markdown file into a database record.
 
@@ -265,7 +288,8 @@ def load_markdown(
     pattern: str = "**/*.md",
     max_columns: int = 1800,
     top_sections: int = 20,
-    verbose: bool = False
+    verbose: bool = False,
+    prune: bool = False
 ) -> int:
     """Load markdown files into SQLite database.
 
@@ -277,6 +301,7 @@ def load_markdown(
         max_columns: Maximum allowed columns
         top_sections: Extract only top N most common sections (0=all)
         verbose: Show detailed progress
+        prune: Delete rows whose source file no longer exists
 
     Returns:
         Number of documents successfully loaded
@@ -328,6 +353,11 @@ def load_markdown(
         except Exception as e:
             if verbose:
                 print(f"Warning: Error writing {doc.get('_path', 'unknown')}: {e}")
+
+    if prune:
+        removed = prune_missing(database, table, md_files, root_path)
+        if verbose and removed:
+            print(f"Removed {removed} rows for missing files")
 
     return imported
 

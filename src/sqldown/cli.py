@@ -8,6 +8,7 @@ from sqlite_utils import Database
 from .core import (
     analyze_section_frequency,
     process_markdown_file,
+    prune_missing,
     reconstruct_markdown,
     validate_column_count,
     write_doc,
@@ -43,9 +44,12 @@ def main():
               help='Maximum allowed columns (default: 1800, SQLite limit: 2000)')
 @click.option('-n', '--top-sections', type=int, default=None,
               help='Extract only top N most common sections (default: 20, 0=all)')
+@click.option('--prune', is_flag=True,
+              help='Delete rows whose source file no longer exists '
+                   '(only when this root and pattern cover the whole table)')
 @click.option('-v', '--verbose', is_flag=True, help='Verbose output')
 @click.help_option('-h', '--help')
-def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
+def load(root_path, db, table, pattern, max_columns, top_sections, prune, verbose):
     """Load markdown files into database.
 
     Each file's row is replaced as a whole, so fields and sections removed
@@ -55,6 +59,7 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
       sqldown load ~/tasks
       sqldown load ~/notes -d notes.db -t my_notes
       sqldown load ~/tasks --top-sections 10
+      sqldown load ~/tasks --prune
     """
     # Load cascading configuration
     config = load_cascading_env(root_path)
@@ -188,6 +193,8 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
             if verbose:
                 click.echo(f"⚠️  Error writing {doc.get('_path', 'unknown')}: {e}", err=True)
 
+    removed = prune_missing(database, table, md_files, root_path) if prune else 0
+
     # Build concise output message
     action = "Created" if not db_existed else "Updated"
     db_path = db.resolve()
@@ -206,6 +213,8 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
         stats_parts.append(f"{added} added")
     if updated > 0:
         stats_parts.append(f"{updated} modified")
+    if removed > 0:
+        stats_parts.append(f"{removed} removed")
 
     processed = added + updated
     total_found = len(md_files)

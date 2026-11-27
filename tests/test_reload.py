@@ -72,3 +72,66 @@ def test_removed_section_is_cleared(tmp_path, load):
     row = rows_by_path(db_path)["a.md"]
     assert row["section_notes"] is None
     assert row["section_plan"] == "the plan"
+
+
+def test_reload_without_prune_keeps_rows_for_missing_files(tmp_path):
+    """Existing behaviour: rows are only removed when asked."""
+    root = tmp_path / "docs"
+    db_path = tmp_path / "index.db"
+    write(root / "a.md", "# A\n")
+    write(root / "b.md", "# B\n")
+    cli_load(root, db_path)
+
+    (root / "b.md").unlink()
+    cli_load(root, db_path)
+
+    assert set(rows_by_path(db_path)) == {"a.md", "b.md"}
+
+
+@pytest.mark.parametrize(
+    "load",
+    [
+        pytest.param(lambda root, db: cli_load(root, db, "--prune"), id="cli"),
+        pytest.param(lambda root, db: api_load(root, db, prune=True), id="api"),
+    ],
+)
+def test_prune_removes_rows_for_deleted_and_renamed_files(tmp_path, load):
+    root = tmp_path / "docs"
+    db_path = tmp_path / "index.db"
+    write(root / "a.md", "# A\n")
+    write(root / "b.md", "# B\n")
+    write(root / "old-name.md", "# C\n")
+    load(root, db_path)
+
+    (root / "b.md").unlink()
+    (root / "old-name.md").rename(root / "new-name.md")
+    load(root, db_path)
+
+    assert set(rows_by_path(db_path)) == {"a.md", "new-name.md"}
+
+
+def test_prune_keeps_row_for_file_that_fails_to_parse(tmp_path):
+    """A file that still exists keeps its last good row if it can't be read."""
+    root = tmp_path / "docs"
+    db_path = tmp_path / "index.db"
+    write(root / "a.md", "# A\n")
+    write(root / "b.md", "# B\n")
+    cli_load(root, db_path, "--prune")
+
+    (root / "b.md").write_bytes(b"\xff\xfe not utf-8")
+    cli_load(root, db_path, "--prune")
+
+    assert set(rows_by_path(db_path)) == {"a.md", "b.md"}
+
+
+def test_prune_reports_removed_count(tmp_path):
+    root = tmp_path / "docs"
+    db_path = tmp_path / "index.db"
+    write(root / "a.md", "# A\n")
+    write(root / "b.md", "# B\n")
+    cli_load(root, db_path, "--prune")
+
+    (root / "b.md").unlink()
+    result = cli_load(root, db_path, "--prune")
+
+    assert "1 removed" in result.output
