@@ -153,6 +153,29 @@ def analyze_section_frequency(files: List[Path], top_n: int) -> Optional[Set[str
     return set(top_sections)
 
 
+def _relative_path(path: Path, root: Path) -> str:
+    """Path of a file relative to the load root, as stored in `_path`."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _doc_id(rel_path: str) -> str:
+    """Primary key for a document, derived from its relative path."""
+    return hashlib.sha1(rel_path.encode('utf-8')).hexdigest()
+
+
+def write_doc(database, table: str, doc: Dict) -> None:
+    """Write a document as a whole row, replacing any existing row.
+
+    Columns the document no longer has are set to NULL, so a field or
+    section removed from a file is cleared on reload. (An upsert would
+    only update the columns present and leave the old values behind.)
+    """
+    database[table].insert(doc, pk='_id', alter=True, replace=True)
+
+
 def process_markdown_file(path: Path, root: Path, allowed_sections: Optional[Set[str]] = None) -> Dict:
     """Process a single markdown file into a database record.
 
@@ -174,18 +197,14 @@ def process_markdown_file(path: Path, root: Path, allowed_sections: Optional[Set
     lead = extract_lead(body)
     sections = parse_h2_sections(body, allowed_sections)
 
-    # Calculate relative path
-    try:
-        rel_path = str(path.relative_to(root))
-    except ValueError:
-        rel_path = str(path)
+    rel_path = _relative_path(path, root)
 
     # Prefix section columns to distinguish from frontmatter
     prefixed_sections = {f'section_{key}': value for key, value in sections.items()}
 
     # Create document with dynamic fields from frontmatter
     doc = {
-        '_id': hashlib.sha1(rel_path.encode('utf-8')).hexdigest(),
+        '_id': _doc_id(rel_path),
         '_path': rel_path,
         '_sections': list(sections.keys()),  # Ordered list of section names
         'title': title or '',
@@ -304,11 +323,11 @@ def load_markdown(
     imported = 0
     for doc in docs:
         try:
-            database[table].upsert(doc, pk='_id', alter=True)
+            write_doc(database, table, doc)
             imported += 1
         except Exception as e:
             if verbose:
-                print(f"Warning: Error upserting {doc.get('_path', 'unknown')}: {e}")
+                print(f"Warning: Error writing {doc.get('_path', 'unknown')}: {e}")
 
     return imported
 

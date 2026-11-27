@@ -57,7 +57,7 @@ sqldown load PATH [OPTIONS]
 - Parses YAML frontmatter → database columns
 - Extracts H2 sections → `section_*` columns
 - Creates schema dynamically based on discovered fields
-- Upserts into SQLite (idempotent - safe to run multiple times)
+- Writes each file as a whole row (idempotent - safe to run multiple times). Fields and sections removed from a file are cleared on reload
 - Respects `.gitignore` patterns automatically
 
 **Options:**

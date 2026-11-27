@@ -10,6 +10,7 @@ from .core import (
     process_markdown_file,
     reconstruct_markdown,
     validate_column_count,
+    write_doc,
 )
 from .utils import (
     find_git_root,
@@ -46,6 +47,9 @@ def main():
 @click.help_option('-h', '--help')
 def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
     """Load markdown files into database.
+
+    Each file's row is replaced as a whole, so fields and sections removed
+    from a file are cleared on reload.
 
     Examples:
       sqldown load ~/tasks
@@ -178,11 +182,11 @@ def load(root_path, db, table, pattern, max_columns, top_sections, verbose):
                 updated += 1
             else:
                 added += 1
-            database[table].upsert(doc, pk='_id', alter=True)
+            write_doc(database, table, doc)
         except Exception as e:
             errors += 1
             if verbose:
-                click.echo(f"⚠️  Error upserting {doc.get('_path', 'unknown')}: {e}", err=True)
+                click.echo(f"⚠️  Error writing {doc.get('_path', 'unknown')}: {e}", err=True)
 
     # Build concise output message
     action = "Created" if not db_existed else "Updated"
